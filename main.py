@@ -45,6 +45,8 @@ def main(argv):
     if parent:
         os.makedirs(parent, exist_ok=True)
     shutil.copyfile(src, out)
+    if os.path.getsize(out) != os.path.getsize(src):
+        raise SystemExit("written output size does not match the source image")
     if _digest(out) != IMAGE_SHA256:
         raise SystemExit("written output failed its sha256 check")
     print("wrote %s (%d bytes)" % (out, os.path.getsize(out)))
