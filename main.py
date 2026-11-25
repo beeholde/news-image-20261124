@@ -1,56 +1,52 @@
 #!/usr/bin/env python3
-"""news-image-20261124 v2: write the pre-rendered front page to the output.
+"""Entry for news-image-20261124: copy the pre-rendered front page to the output path.
 
-The entry image is a 1024x1024 PNG, "THE WORLD TODAY — Tuesday 24 November
-2026, Late Edition": 42 day-tagged stories across 9 regions, with the CAS
-Senegal ruling, Champions League Matchday 5 and the Tuesday market fade as
-the three lead stories, plus an explicit DATE CHECK box.
-
-Standard library only. This program checks the bundled image against its
-known sha256 and the 1 MiB size limit, copies it to the output path, and
-then re-checks the copy byte for byte before exiting.
+Standard library only. Verifies the embedded PNG (sha256 + 1 MiB cap) before
+copying it byte-identically to the destination.
 """
-
 import hashlib
 import os
 import shutil
 import sys
 
-IMAGE_NAME = "entry.png"
-IMAGE_SHA256 = "3222a9c4879a4ad0f72e0f323b831054dacbd4a8b961da0ad2f3bd38b1a6ab7c"
-SIZE_LIMIT = 1_000_000
+EXPECTED_SHA256 = "4cd905376c7bce70f21554bfd11e77d1865256fab6de41eb5cb78dd6fe15941e"
+MAX_BYTES = 1024 * 1024
 
 
-def _digest(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def resolve_output():
+    if len(sys.argv) > 1:
+        return sys.argv[1]
+    env = os.environ.get("ENTRY_OUTPUT") or os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if env:
+        if os.path.isdir(env) or not env.lower().endswith(".png"):
+            return os.path.join(env, "entry.png")
+        return env
+    return os.path.join("/output", "entry.png")
 
 
-def main(argv):
+def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    src = os.path.join(here, IMAGE_NAME)
-    out = os.environ.get("ENTRY_OUTPUT") or "/output/entry.png"
-    if len(argv) > 1:
-        out = argv[1]
-
-    if os.path.getsize(src) > SIZE_LIMIT:
-        raise SystemExit("entry image over the 1 MiB limit")
-    if _digest(src) != IMAGE_SHA256:
-        raise SystemExit("entry image sha256 does not match the expected value")
-
-    parent = os.path.dirname(os.path.abspath(out))
+    src = os.path.join(here, "entry.png")
+    with open(src, "rb") as f:
+        data = f.read()
+    if len(data) > MAX_BYTES:
+        sys.exit("entry.png exceeds the 1 MiB cap")
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != EXPECTED_SHA256:
+        sys.exit("entry.png sha256 mismatch: " + digest)
+    dest = resolve_output()
+    parent = os.path.dirname(dest)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    shutil.copyfile(src, out)
-    if os.path.getsize(out) != os.path.getsize(src):
-        raise SystemExit("written output size does not match the source image")
-    if _digest(out) != IMAGE_SHA256:
-        raise SystemExit("written output failed its sha256 check")
-    print("wrote %s (%d bytes)" % (out, os.path.getsize(out)))
+    shutil.copyfile(src, dest)
+    with open(dest, "rb") as f:
+        written = f.read()
+    if written != data:
+        sys.exit("output is not byte-identical to the source image")
+    if os.path.getsize(dest) != len(data):
+        sys.exit("output size does not match the source image")
+    print("wrote %s (%d bytes, sha256 %s)" % (dest, len(data), digest))
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()
